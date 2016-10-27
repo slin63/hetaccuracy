@@ -35,6 +35,7 @@ def update_filter_status(vcf_file, drop_list):
     # http://stackoverflow.com/questions/26896382/how-to-search-pandas-data-frame-by-index-value-and-value-in-any-column
     header_line = get_lines_till_header(vcf_file)
     vcf_pd = pandas.read_table(vcf_file, skiprows=header_line)
+    failed_count = 0
 
     # ah yes list comprehension -- the classic
     for index in drop_list.index:
@@ -42,10 +43,20 @@ def update_filter_status(vcf_file, drop_list):
         chrom = drop_list.loc[index]['CHR']
         pos = drop_list.loc[index]['POS']
 
+        c_p = [chrom, pos]
+
+
         to_fail = vcf_pd[(vcf_pd['#CHROM'] == chrom ) & (vcf_pd['POS']== pos)].index
+
+        if len(to_fail) is 0:
+            print '\t > CHROM: POS PAIR: {} NOT FOUND IN {}'.format(c_p, vcf_file)
+            # raise KeyError('CHROM: POS PAIR: {} NOT FOUND IN {}'.format(c_p, vcf_file))
+        else:
+            failed_count += len(to_fail)
+
         vcf_pd.loc[to_fail, 'FILTER'] = 'FAILHW'
 
-    # vcf_pd.set_index(['#CHROM'], inplace=True)
+    print '\t >>> FAILED {} INDIVIDUAL ENTRIES FROM {} UNIQUE [CHROM: POS] KEYS'.format(failed_count, len(drop_list))
 
     return vcf_pd
 
@@ -59,6 +70,7 @@ def merge_old(vcf_file, updated_vcf, out_file):
         merged_vcf = first_half + '\n' + other_half
 
     with open(out_file, 'wb') as merged_out:
+        print "OUTFILE  :: ", out_file
         merged_out.write(merged_vcf)
 
 if __name__ == '__main__':
@@ -73,6 +85,4 @@ if __name__ == '__main__':
         to_drop_list = to_drop(args.pval_file, args.pval)
         updated_vcf = update_filter_status(vcf, to_drop_list)
         merge_old(vcf, updated_vcf, OUT_NAME)
-
-
 
