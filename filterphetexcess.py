@@ -12,7 +12,7 @@ def to_drop(pval_file, pval=0.05):
 
     drop_list = tofilter[tofilter.P_HET_EXCESS <= bonf] # Rows to call FAILHW on
     #need to filter out of vcf file
-    print "TO DROP  :: ", len(drop_list)
+    print "TO DROP  :: \n", drop_list[['CHR', 'POS']]
     #save to sites to remove to dict or something and then change in vcf file those sites that fail p excess filter from PASS to FAILHWE in vcf tools
     #vcftools could then be used to remove those sites, otherwise delete this lines entirely that don't meet filter
 
