@@ -1,20 +1,24 @@
 import pandas
 import csv
 import argparse
-# SAMPLE_CALL :: python filterphetexcess.py -vcf_list allsamplesafterfiltering.mpileup.vcf final.GATK.break.vcf.recode.vcf -pval_file out.hwe --pval 0.05
 
-def to_drop(pval_file, pval=0.05):
+import variant_filter
+# SAMPLE_CALL :: python filterphetexcess.py -vcf_list allsamplesafterfiltering.mpileup.vcf -pval_file out.hwe -amp_file ampliconregions.csv --pval 0.05
+
+def to_drop(pval_file, vcf_file, amp_list, pval=0.05):
     tofilter = pandas.read_table(pval_file)
     loci = float(len(tofilter))
     print "NUM LOCI :: ", loci
     bonf = pval/loci
     print "CUTOFF   :: ", bonf
 
-    drop_list = tofilter[tofilter.P_HET_EXCESS <= bonf] # Rows to call FAILHW on
-    #need to filter out of vcf file
+    drop_list_raw = tofilter[tofilter.P_HET_EXCESS <= bonf] # Rows to call FAILHW on
+
+    header_line = get_lines_till_header(vcf_file)
+    vcf_pd = pandas.read_table(vcf_file, skiprows=header_line)
+    drop_list = variant_filter.process_to_drop(drop_list_raw, vcf_pd, amp_list) # Does that magic to check if > x% of variants fail and fails the rest.
+
     print "TO DROP  :: \n", drop_list[['CHR', 'POS']]
-    #save to sites to remove to dict or something and then change in vcf file those sites that fail p excess filter from PASS to FAILHWE in vcf tools
-    #vcftools could then be used to remove those sites, otherwise delete this lines entirely that don't meet filter
 
     return drop_list[['CHR', 'POS']]
 
@@ -32,6 +36,7 @@ def get_lines_till_header(vcf_file):
     return header_line
 
 def update_filter_status(vcf_file, drop_list):
+    """Assigns FAILHW to rows listed in drop_list"""
     # http://stackoverflow.com/questions/26896382/how-to-search-pandas-data-frame-by-index-value-and-value-in-any-column
     header_line = get_lines_till_header(vcf_file)
     vcf_pd = pandas.read_table(vcf_file, skiprows=header_line)
@@ -43,10 +48,7 @@ def update_filter_status(vcf_file, drop_list):
         chrom = drop_list.loc[index]['CHR']
         pos = drop_list.loc[index]['POS']
 
-        c_p = [chrom, pos]
-
-
-        to_fail = vcf_pd[(vcf_pd['#CHROM'] == chrom ) & (vcf_pd['POS']== pos)].index
+        to_fail = vcf_pd[(vcf_pd['#CHROM'] == chrom ) & (vcf_pd['POS'] == pos)].index
 
         if len(to_fail) is 0:
             print '\t > CHROM: POS PAIR: {} NOT FOUND IN {}'.format(c_p, vcf_file)
@@ -77,12 +79,15 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Update pass/fail values on the passed .VCF file.')
     parser.add_argument('-vcf_list', nargs='*', help='List with the names of the VCF files to be processed.')
     parser.add_argument('-pval_file', help='Name of the CSV file containing calculated p-vals')
+    parser.add_argument('-amp_file', help='Name of the CSV file containing Amplicon data')
     parser.add_argument('--pval', type=float, help='Pval to use for cutoff determination')
     args = parser.parse_args()
 
     for vcf in args.vcf_list:
         OUT_NAME = "PHETE-FILTERED_"+ vcf
-        to_drop_list = to_drop(args.pval_file, args.pval)
+        amp_list = variant_filter.read_amp_file(args.amp_file)
+
+        to_drop_list = to_drop(args.pval_file, vcf, amp_list, args.pval)
         updated_vcf = update_filter_status(vcf, to_drop_list)
         merge_old(vcf, updated_vcf, OUT_NAME)
 
